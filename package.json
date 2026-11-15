@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "dev": "wrangler dev --port 8787",
+    "dev": "wrangler dev --config worker/wrangler.jsonc --port 8787",
     "test": "node --test test/*.test.mjs",
-    "deploy:worker": "wrangler deploy",
-    "deploy:pages": "npm run build && wrangler pages deploy dist --config wrangler.pages.jsonc --project-name pair-chat-timer --branch main --force"
+    "deploy:worker": "wrangler deploy --config worker/wrangler.jsonc",
+    "deploy:pages": "npm run build && wrangler pages deploy dist --project-name pair-chat-timer --branch main"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
