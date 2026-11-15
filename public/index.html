@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f6f4ef"><meta name="referrer" content="no-referrer">
+<title>ふたりの時間 — Pair</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%232f6355'/%3E%3Ccircle cx='24' cy='32' r='12' fill='%23fff'/%3E%3Ccircle cx='40' cy='32' r='12' fill='%23c9dfbd' fill-opacity='.85'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
+</head>
+<body>
+<div class="shell">
+<header><a class="brand" href="/" aria-label="Pair ホーム"><span class="logo" aria-hidden="true">●<span>●</span></span>pair<span class="brand-note">ふたりの時間</span></a><span class="private-badge">招待したふたりだけ</span></header>
+<main>
+<section class="intro"><div><p class="eyebrow">A LITTLE SPACE FOR TWO</p><h1>話しながら、<br class="mobile-break">同じ時間を。</h1><p class="lead">チャットとタイマー。離れていても、ふたりのペースで。</p></div><div class="intro-art" aria-hidden="true"><div class="orbit"></div><div class="art-circle first"></div><div class="art-circle second"></div><span class="spark">✦</span></div></section>
+<div class="workspace">
+<aside class="side">
+<section class="card room-card"><div class="section-label"><span>01 / ROOM</span><span class="live" id="connection">未接続</span></div><h2 id="room-title">ふたりの部屋をつくる</h2><p class="muted" id="room-description">リンクを送って、相手を招待しましょう。</p>
+<form id="join-form"><label for="name">表示名</label><input id="name" maxlength="20" placeholder="あなたの名前" autocomplete="nickname"><button class="primary full" id="connect-button" type="submit">部屋をつくる <span aria-hidden="true">↗</span></button></form>
+<div id="invitation" hidden><label for="invite-url">相手に送る招待リンク</label><div class="copy-row"><input id="invite-url" readonly aria-label="招待リンク"><button id="copy" class="secondary" type="button">コピー</button></div><p class="small muted">このページを開いたまま、相手の参加を待ってください。</p></div>
+<div id="join-request" class="request" hidden><p id="request-name"></p><div class="button-row"><button id="approve" class="primary">参加を承認</button><button id="reject" class="secondary">見送る</button></div></div>
+<button id="leave" class="text-button" hidden>部屋を退出する ↗</button>
+<p id="status-message" class="status-message" role="status" aria-live="polite">アカウント登録は必要ありません。</p>
+</section>
+<section class="card timer-card"><div class="section-label"><span>02 / SHARED TIMER</span><span id="role-label">共有タイマー</span></div><div class="timer-dial"><span id="timer-state">READY WHEN YOU ARE</span><output id="time" aria-label="残り時間">05:00</output><span class="timer-note" id="timer-note">ふたりが揃ったら、スタート</span></div>
+<div class="duration-row"><label for="duration">時間</label><select id="duration" disabled><option value="60">1分</option><option value="180">3分</option><option value="300" selected>5分</option><option value="600">10分</option><option value="900">15分</option><option value="1500">25分</option></select></div>
+<div class="timer-controls"><button class="primary" id="start" disabled>開始</button><button class="secondary" id="pause" disabled>一時停止</button><button class="icon-button" id="reset" aria-label="タイマーをリセット" title="リセット" disabled>↺</button></div>
+<div class="action-controls"><button id="complete" class="complete" disabled><span aria-hidden="true">✓</span> 完了</button><button id="stop" class="stop" disabled><span aria-hidden="true">■</span> 停止</button></div>
+<p class="small muted center">停止は、どちらからでも。</p>
+</section>
+</aside>
+<section class="card chat-card" aria-label="チャット"><div class="chat-heading"><div><div class="section-label">03 / CONVERSATION</div><h2>ふたりの会話</h2></div><span id="people" class="people">0 / 2</span></div>
+<div class="messages" id="messages" role="log" aria-label="メッセージ" aria-live="polite"><div class="empty" id="empty"><div class="empty-icon" aria-hidden="true">“</div><h3>ここから、会話を。</h3><p>ふたりがつながると<br>メッセージを送れます。</p><span class="empty-line"></span><p class="small">会話は保存されず、この時間だけのもの。</p></div></div>
+<form id="chat-form" class="composer"><label class="sr-only" for="message">メッセージ</label><textarea id="message" rows="1" maxlength="1000" placeholder="メッセージを入力…" disabled></textarea><button id="send" class="send-button" disabled aria-label="メッセージを送信">↑</button></form><div class="chat-footnote">Enterで送信 · Shift＋Enterで改行</div>
+</section>
+</div>
+<footer><span>ひとつの時間を、ふたりで。</span><span>履歴保存なし · 接続中だけ共有 · 最長2時間</span></footer>
+</main></div><div id="toast" class="toast" role="status" hidden></div>
+</body></html>

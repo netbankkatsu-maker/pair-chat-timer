@@ -1,0 +1,18 @@
+{
+  "name": "pair-chat-timer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "wrangler dev --port 8787",
+    "test": "node --test test/*.test.mjs",
+    "deploy:worker": "wrangler deploy",
+    "deploy:pages": "npm run build && wrangler pages deploy dist --config wrangler.pages.jsonc --project-name pair-chat-timer --branch main"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "wrangler": "4.162.0",
+    "ws": "^8.23.0"
+  }
+}
