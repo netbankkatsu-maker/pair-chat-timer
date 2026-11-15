@@ -66,3 +66,28 @@ test('invalid key, duplicate guest, and host departure are handled', { timeout: 
   host.send({ type: 'approve' }); await guest.wait(x => x.type === 'approved');
   host.ws.close(); const ended = await guest.wait(x => x.type === 'ended'); assert.ok(ended.message.includes('作成者'));
 });
+test('pause/reset, rejected join, and automatic timer completion', { timeout: 20000 }, async t => {
+  const r = await room(); const host = await connect(r.id, r.hostKey); t.after(() => host.ws.close());
+  await host.wait(x => x.type === 'identity');
+  const rejected = await connect(r.id, r.inviteKey); t.after(() => rejected.ws.close());
+  await rejected.wait(x => x.type === 'pending'); host.send({ type: 'reject' });
+  await rejected.wait(x => x.type === 'ended' && x.message.includes('見送られ'));
+  const guest = await connect(r.id, r.inviteKey); t.after(() => guest.ws.close());
+  await guest.wait(x => x.type === 'pending'); host.send({ type: 'approve' }); await guest.wait(x => x.type === 'approved');
+  host.send({ type: 'timer', action: 'set', seconds: 10 });
+  await guest.wait(x => x.type === 'state' && x.timer.duration === 10000);
+  host.send({ type: 'timer', action: 'start' }); await guest.wait(x => x.type === 'state' && x.timer.status === 'running');
+  host.send({ type: 'timer', action: 'pause' }); const paused = await guest.wait(x => x.type === 'state' && x.timer.status === 'paused');
+  assert.equal(paused.timer.endsAt, null); assert.ok(paused.timer.remaining <= 10000);
+  host.send({ type: 'timer', action: 'reset' });
+  await guest.wait(x => x.type === 'state' && x.revision > paused.revision && x.timer.status === 'idle' && x.timer.remaining === 10000);
+  const keepalive = setInterval(() => { host.send({ type: 'ping' }); guest.send({ type: 'ping' }); }, 3000); t.after(() => clearInterval(keepalive));
+  host.send({ type: 'timer', action: 'start' });
+  // Completion takes ten seconds; use a dedicated wait rather than the short event helper.
+  const finished = await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Timer did not finish')), 13000);
+    const listener = raw => { const d = JSON.parse(raw.toString()); if (d.type === 'state' && d.timer.status === 'finished') { clearTimeout(timeout); guest.ws.off('message', listener); resolve(d); } };
+    guest.ws.on('message', listener);
+  });
+  assert.equal(finished.timer.remaining, 0); assert.equal(finished.timer.endsAt, null);
+});
