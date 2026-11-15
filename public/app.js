@@ -4,6 +4,8 @@ let inviteId = hash.get('room');
 let inviteKey = hash.get('key');
 // Keep invitation secrets out of the address bar and referrers once read.
 if (location.hash) history.replaceState(null, '', location.pathname);
+let owner = false, roomId = null, inviteAvailable = true;
+const ownerActivation = hash.get('owner');
 let socket, role, approved = false, paired = false, connecting = false, stopped = false;
 let timer = { status: 'idle', duration: 300000, remaining: 300000, endsAt: null };
 let revision = 0, offset = 0, heartbeat, lastReceived = 0, toastTimeout;
@@ -28,6 +30,8 @@ function updateControls() {
   $('complete').disabled = !online || !paired;
   $('message').disabled = !online || !paired;
   $('send').disabled = !online || !paired;
+  $('invitation').hidden = !(role === 'host' && online && inviteAvailable);
+  $('new-invite').hidden = !(role === 'host' && online && !paired && !inviteAvailable);
   $('people').textContent = paired ? '2 / 2' : online ? '1 / 2' : '0 / 2';
   $('connection').textContent = stopped ? '切断' : paired ? '接続済み' : online ? '相手を待機中' : connecting ? '接続中' : '未接続';
   $('connection').className = `live ${paired ? 'online' : online || connecting ? 'pending' : ''}`;
@@ -63,14 +67,14 @@ function disconnect(message = '接続が切れました。新しい部屋を作�
   if (timer.endsAt) timer.remaining = Math.max(0, timer.endsAt - Date.now() - offset);
   timer.status = 'stopped'; timer.endsAt = null;
   status(message, true); $('join-request').hidden = true; $('invitation').hidden = true;
-  $('leave').hidden = true; $('connect-button').disabled = false;
+  $('leave').hidden = true; $('connect-button').disabled = !inviteId && !owner;
   $('connect-button').textContent = inviteId ? '参加を再試行' : '新しい部屋をつくる ↗';
   $('join-form').hidden = false;
   socket?.close(); updateControls(); renderTime();
 }
 $('join-form').addEventListener('submit', async event => {
   event.preventDefault();
-  if (connecting) return;
+  if (connecting || (!inviteId && !owner)) return;
   connecting = true; stopped = false; approved = false; paired = false; revision = 0; events.clear();
   for (const child of [...$('messages').children]) if (child.id !== 'empty') child.remove();
   $('empty').hidden = false;
@@ -79,10 +83,11 @@ $('join-form').addEventListener('submit', async event => {
   try {
     if (!id) {
       const response = await fetch('/api/rooms', { method: 'POST' });
-      if (!response.ok) throw new Error('部屋を作成できませんでした。少し待って再試行してください。');
+      if (!response.ok) throw new Error(response.status === 403 ? '部屋の作成は管理者だけが行えます。' : '部屋を作成できませんでした。少し待って再試行してください。');
       const result = await response.json(); id = result.id; key = result.hostKey;
       $('invite-url').value = `${location.origin}${location.pathname}#room=${id}&key=${result.inviteKey}`;
     }
+    roomId = id;
     const endpoint = new URL(`/api/rooms/${id}/socket`, location.origin); endpoint.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     socket = new WebSocket(endpoint);
     const activeSocket = socket;
@@ -116,10 +121,13 @@ $('join-form').addEventListener('submit', async event => {
         case 'join-cleared': $('join-request').hidden = true; break;
         case 'state':
           if (data.revision <= revision) break;
-          revision = data.revision; timer = data.timer; paired = data.connected;
+          revision = data.revision; timer = data.timer; paired = data.connected; inviteAvailable = data.inviteAvailable;
           if (paired) { status('接続しました。ふたりの時間をどうぞ。'); $('join-request').hidden = true; }
           if (role === 'host') $('duration').value = String(timer.duration / 1000);
           break;
+        case 'invite':
+          $('invite-url').value = `${location.origin}${location.pathname}#room=${roomId}&key=${data.key}`;
+          inviteAvailable = true; toast('新しい招待リンクを発行しました'); break;
         case 'chat': case 'event': addEvent(data); break;
         case 'error': toast(data.message); break;
         case 'ended': disconnect(data.message); break;
@@ -134,6 +142,7 @@ $('copy').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText($('invite-url').value); toast('招待リンクをコピーしました'); }
   catch { $('invite-url').select(); toast('招待リンクを選択しました。コピーしてください。'); }
 });
+$('new-invite').addEventListener('click', () => send({ type: 'new-invite' }));
 $('approve').addEventListener('click', () => { send({ type: 'approve' }); $('join-request').hidden = true; });
 $('reject').addEventListener('click', () => { send({ type: 'reject' }); $('join-request').hidden = true; });
 $('leave').addEventListener('click', () => { send({ type: 'leave' }); disconnect('退出しました。会話の記録を消去しました。'); for (const child of [...$('messages').children]) if (child.id !== 'empty') child.remove(); $('empty').hidden = false; });
@@ -149,5 +158,22 @@ $('message').addEventListener('keydown', event => { if (event.key === 'Enter' &&
 $('message').addEventListener('input', () => { $('message').style.height = 'auto'; $('message').style.height = `${Math.min(110, $('message').scrollHeight)}px`; });
 window.addEventListener('pagehide', () => { send({ type: 'leave' }); socket?.close(); });
 window.addEventListener('offline', () => disconnect('オフラインになったため停止しました。'));
+async function initializeOwner() {
+  $('connect-button').disabled = true;
+  try {
+    if (ownerActivation) {
+      const response = await fetch('/api/owner', { method: 'POST', headers: { Authorization: `Bearer ${ownerActivation}` } });
+      if (!response.ok) throw new Error('管理者用リンクが無効です。');
+    }
+    const response = await fetch('/api/session', { cache: 'no-store' });
+    if (!response.ok) throw new Error('認証状態を確認できませんでした。再読み込みしてください。');
+    owner = (await response.json()).owner === true;
+    $('connect-button').disabled = !inviteId && !owner;
+    if (!inviteId && !owner) {
+      $('join-form').hidden = true; status('招待リンクから参加してください。');
+    } else status(inviteId ? '名前を入力して参加してください。' : '管理者として接続しました。');
+  } catch (error) { status(error.message, true); }
+}
+initializeOwner();
 setInterval(renderTime, 250);
 updateControls(); renderTime();

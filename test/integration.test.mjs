@@ -2,8 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import WebSocket from 'ws';
 const origin = process.env.TEST_ORIGIN || 'http://localhost:8787';
+let ownerCookie;
+async function authenticateOwner() {
+  if (ownerCookie) return ownerCookie;
+  const response = await fetch(`${origin}/api/owner`, { method: 'POST', headers: { Origin: origin, Authorization: `Bearer ${process.env.TEST_OWNER_KEY || 'local-test-owner-key'}` } });
+  assert.equal(response.status, 200);
+  ownerCookie = response.headers.get('set-cookie').split(';')[0];
+  return ownerCookie;
+}
 async function room() {
-  const response = await fetch(`${origin}/api/rooms`, { method: 'POST', headers: { Origin: origin } });
+  const response = await fetch(`${origin}/api/rooms`, { method: 'POST', headers: { Origin: origin, Cookie: await authenticateOwner() } });
   assert.equal(response.status, 200); return response.json();
 }
 async function connect(id, key, name = 'テスト') {
@@ -90,4 +98,27 @@ test('pause/reset, rejected join, and automatic timer completion', { timeout: 20
     guest.ws.on('message', listener);
   });
   assert.equal(finished.timer.remaining, 0); assert.equal(finished.timer.endsAt, null);
+});
+
+test('only the owner can create rooms, including direct API requests', async () => {
+  const unauthorized = await fetch(`${origin}/api/rooms`, { method: 'POST', headers: { Origin: origin } });
+  assert.equal(unauthorized.status, 403);
+  const forged = await fetch(`${origin}/api/rooms`, { method: 'POST', headers: { Origin: origin, Cookie: `pair_owner=${Date.now()+100000}.`+'0'.repeat(64) } });
+  assert.equal(forged.status, 403);
+  const rejected = await fetch(`${origin}/api/owner`, { method: 'POST', headers: { Origin: origin, Authorization: 'Bearer wrong' } });
+  assert.equal(rejected.status, 403);
+  const session = await fetch(`${origin}/api/session`); assert.deepEqual(await session.json(), { owner: false });
+  const owner = await fetch(`${origin}/api/session`, { headers: { Cookie: await authenticateOwner() } }); assert.deepEqual(await owner.json(), { owner: true });
+});
+test('accepted invitations cannot be reused; only host can issue a new one', { timeout: 15000 }, async t => {
+  const r = await room(); const host = await connect(r.id, r.hostKey); t.after(() => host.ws.close());
+  await host.wait(x => x.type === 'identity');
+  const guest = await connect(r.id, r.inviteKey); t.after(() => guest.ws.close());
+  await guest.wait(x => x.type === 'pending'); host.send({ type: 'approve' }); await guest.wait(x => x.type === 'approved');
+  guest.send({ type: 'new-invite' }); await delay(); assert.ok(!guest.received.some(x => x.type === 'invite'));
+  guest.ws.close(); await host.wait(x => x.type === 'event' && x.text.includes('切れたため'));
+  const retry = await connect(r.id, r.inviteKey); t.after(() => retry.ws.close()); await retry.wait(x => x.type === 'ended');
+  host.send({ type: 'new-invite' }); const fresh = await host.wait(x => x.type === 'invite'); assert.notEqual(fresh.key, r.inviteKey);
+  const next = await connect(r.id, fresh.key); t.after(() => next.ws.close()); await next.wait(x => x.type === 'pending');
+  host.send({ type: 'approve' }); await next.wait(x => x.type === 'approved');
 });

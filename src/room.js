@@ -34,7 +34,7 @@ export class Room {
   send(socket, data) { try { socket.send(JSON.stringify(data)); } catch { /* close event handles cleanup */ } }
   broadcast(data) { for (const [ws, info] of this.clients) if (info.approved) this.send(ws, data); }
   snapshot() {
-    this.broadcast({ type: 'state', revision: ++this.revision, timer: this.timer, connected: [...this.clients.values()].filter(x => x.approved).length === 2, now: Date.now() });
+    this.broadcast({ type: 'state', revision: ++this.revision, timer: this.timer, connected: [...this.clients.values()].filter(x => x.approved).length === 2, inviteAvailable: !!this.keys?.inviteKey, now: Date.now() });
   }
   event(text) { this.broadcast({ type: 'event', text, at: Date.now(), id: crypto.randomUUID() }); }
   message(socket, raw) {
@@ -69,6 +69,7 @@ export class Room {
     if (data.type === 'approve' && info.role === 'host') {
       for (const [ws, pending] of this.clients) if (pending.role === 'guest' && !pending.approved) {
         pending.approved = true;
+        this.keys.inviteKey = null;
         this.send(ws, { type: 'approved' });
         this.event(`${pending.name}さんが参加しました。`);
       }
@@ -79,6 +80,11 @@ export class Room {
       return;
     }
     const paired = [...this.clients.values()].filter(x => x.approved).length === 2;
+    if (data.type === 'new-invite' && info.role === 'host' && ![...this.clients.values()].some(x => x.role === 'guest')) {
+      this.keys.inviteKey = crypto.randomUUID() + crypto.randomUUID();
+      this.send(socket, { type: 'invite', key: this.keys.inviteKey });
+      return this.snapshot();
+    }
     if (data.type === 'chat' && paired && typeof data.text === 'string' && data.text.trim() && data.text.length <= 1000) {
       return this.broadcast({ type: 'chat', id: crypto.randomUUID(), role: info.role, name: info.name, text: data.text.trim(), at: now });
     }
