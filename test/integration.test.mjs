@@ -122,3 +122,19 @@ test('accepted invitations cannot be reused; only host can issue a new one', { t
   const next = await connect(r.id, fresh.key); t.after(() => next.ws.close()); await next.wait(x => x.type === 'pending');
   host.send({ type: 'approve' }); await next.wait(x => x.type === 'approved');
 });
+test('background app switching pauses the timer and preserves the connection beyond the old timeout', { timeout: 30000 }, async t => {
+  const r = await room(); const host = await connect(r.id, r.hostKey); t.after(() => host.ws.close());
+  await host.wait(x => x.type === 'identity');
+  const guest = await connect(r.id, r.inviteKey); t.after(() => guest.ws.close());
+  await guest.wait(x => x.type === 'pending'); host.send({ type: 'approve' }); await guest.wait(x => x.type === 'approved');
+  host.send({ type: 'timer', action: 'start' }); await guest.wait(x => x.type === 'state' && x.timer.status === 'running');
+  guest.send({ type: 'suspend' });
+  const paused = await host.wait(x => x.type === 'state' && x.timer.status === 'paused' && !x.connected);
+  const keepalive = setInterval(() => host.send({ type: 'ping' }), 3000); t.after(() => clearInterval(keepalive));
+  await new Promise(resolve => setTimeout(resolve, 21000));
+  assert.ok(!host.received.some(x => x.type === 'ended')); assert.ok(!guest.received.some(x => x.type === 'ended'));
+  guest.send({ type: 'resume' });
+  await host.wait(x => x.type === 'state' && x.revision > paused.revision && x.connected);
+  guest.send({ type: 'chat', text: 'returned from background' });
+  await host.wait(x => x.type === 'chat' && x.text === 'returned from background');
+});

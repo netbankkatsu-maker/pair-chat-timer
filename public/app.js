@@ -9,6 +9,7 @@ const ownerActivation = hash.get('owner');
 let socket, role, approved = false, paired = false, connecting = false, stopped = false;
 let timer = { status: 'idle', duration: 300000, remaining: 300000, endsAt: null };
 let revision = 0, offset = 0, heartbeat, lastReceived = 0, toastTimeout;
+window.addEventListener('hashchange', () => { if (location.hash) location.reload(); });
 const events = new Set();
 if (inviteId && inviteKey) {
   $('room-title').textContent = 'ふたりの部屋に参加';
@@ -19,7 +20,9 @@ function status(text, error = false) { $('status-message').textContent = text; $
 function toast(text) { $('toast').textContent = text; $('toast').hidden = false; clearTimeout(toastTimeout); toastTimeout = setTimeout(() => $('toast').hidden = true, 3000); }
 function send(data) { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(data)); }
 function updateControls() {
-  const online = socket?.readyState === WebSocket.OPEN && approved && !stopped;
+  const transportOpen = socket?.readyState === WebSocket.OPEN && !stopped;
+  const pending = transportOpen && role === 'guest' && !approved;
+  const online = transportOpen && approved;
   const host = role === 'host' && online && paired;
   $('duration').disabled = !host || timer.status === 'running';
   $('start').disabled = !host || timer.status === 'running';
@@ -33,8 +36,8 @@ function updateControls() {
   $('invitation').hidden = !(role === 'host' && online && inviteAvailable);
   $('new-invite').hidden = !(role === 'host' && online && !paired && !inviteAvailable);
   $('people').textContent = paired ? '2 / 2' : online ? '1 / 2' : '0 / 2';
-  $('connection').textContent = stopped ? '切断' : paired ? '接続済み' : online ? '相手を待機中' : connecting ? '接続中' : '未接続';
-  $('connection').className = `live ${paired ? 'online' : online || connecting ? 'pending' : ''}`;
+  $('connection').textContent = stopped ? '切断' : paired ? '接続済み' : pending ? '承認待ち' : online ? '相手を待機中' : connecting ? '接続中' : '未接続';
+  $('connection').className = `live ${paired ? 'online' : online || pending || connecting ? 'pending' : ''}`;
   $('timer-note').textContent = !paired ? 'ふたりが揃ったら、スタート' : role === 'host' ? 'あなたがタイマーを操作できます' : '作成者がタイマーを操作します';
 }
 function renderTime() {
@@ -96,7 +99,7 @@ $('join-form').addEventListener('submit', async event => {
       clearTimeout(connectTimeout); lastReceived = Date.now();
       send({ type: 'hello', key, name: $('name').value.trim() });
       heartbeat = setInterval(() => {
-        if (Date.now() - lastReceived > 16000) return disconnect('通信を確認できないため停止しました。再接続してください。');
+        if (!document.hidden && Date.now() - lastReceived > 30000) return disconnect('通信を確認できないため停止しました。再接続してください。');
         send({ type: 'ping' });
       }, 4000);
     });
@@ -157,6 +160,10 @@ $('chat-form').addEventListener('submit', event => {
 $('message').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); $('chat-form').requestSubmit(); } });
 $('message').addEventListener('input', () => { $('message').style.height = 'auto'; $('message').style.height = `${Math.min(110, $('message').scrollHeight)}px`; });
 window.addEventListener('pagehide', () => { send({ type: 'leave' }); socket?.close(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) send({ type: 'suspend' });
+  else { lastReceived = Date.now(); send({ type: 'resume' }); send({ type: 'ping' }); }
+});
 window.addEventListener('offline', () => disconnect('オフラインになったため停止しました。'));
 async function initializeOwner() {
   $('connect-button').disabled = true;

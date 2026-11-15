@@ -26,7 +26,7 @@ export class Room {
     socket.addEventListener('close', () => { clearTimeout(authTimeout); this.remove(socket); });
     socket.addEventListener('error', () => this.remove(socket));
     if (!this.watchdog) this.watchdog = setInterval(() => {
-      for (const [ws, data] of this.clients) if (Date.now() - data.lastSeen > 16000) this.remove(ws, '通信が切断されました。');
+      for (const [ws, data] of this.clients) if (Date.now() - data.lastSeen > (data.background ? 120000 : 30000)) this.remove(ws, '通信が切断されました。');
       this.broadcast({ type: 'clock', now: Date.now() });
     }, 5000);
     return new Response(null, { status: 101, webSocket: client });
@@ -34,7 +34,7 @@ export class Room {
   send(socket, data) { try { socket.send(JSON.stringify(data)); } catch { /* close event handles cleanup */ } }
   broadcast(data) { for (const [ws, info] of this.clients) if (info.approved) this.send(ws, data); }
   snapshot() {
-    this.broadcast({ type: 'state', revision: ++this.revision, timer: this.timer, connected: [...this.clients.values()].filter(x => x.approved).length === 2, inviteAvailable: !!this.keys?.inviteKey, now: Date.now() });
+    this.broadcast({ type: 'state', revision: ++this.revision, timer: this.timer, connected: [...this.clients.values()].filter(x => x.approved && !x.background).length === 2, inviteAvailable: !!this.keys?.inviteKey, now: Date.now() });
   }
   event(text) { this.broadcast({ type: 'event', text, at: Date.now(), id: crypto.randomUUID() }); }
   message(socket, raw) {
@@ -63,6 +63,8 @@ export class Room {
     }
     if (!info.role) return;
     info.lastSeen = now;
+    if (data.type === 'suspend') { info.background = true; this.pause('paused'); this.snapshot(); return; }
+    if (data.type === 'resume') { info.background = false; this.snapshot(); return; }
     if (data.type === 'ping') return this.send(socket, { type: 'clock', now });
     if (data.type === 'leave') return this.remove(socket, '退出しました。');
     if (!info.approved) return;
@@ -79,7 +81,7 @@ export class Room {
       for (const [ws, pending] of this.clients) if (pending.role === 'guest' && !pending.approved) this.remove(ws, '参加が見送られました。');
       return;
     }
-    const paired = [...this.clients.values()].filter(x => x.approved).length === 2;
+    const paired = [...this.clients.values()].filter(x => x.approved && !x.background).length === 2;
     if (data.type === 'new-invite' && info.role === 'host' && ![...this.clients.values()].some(x => x.role === 'guest')) {
       this.keys.inviteKey = crypto.randomUUID() + crypto.randomUUID();
       this.send(socket, { type: 'invite', key: this.keys.inviteKey });
