@@ -41,9 +41,11 @@ Cloudflare Pagesが画面とAPI入口、別WorkerのDurable Objectが部屋とWe
 ```sh
 npx wrangler login
 npm run deploy:worker
-npx wrangler pages project create pair-chat-timer --production-branch main
+npx wrangler pages project create pair-chat-timer --production-branch main --force
 npm run deploy:pages
 ```
+
+Wranglerの新しいWorkersへの自動移行を避け、Pagesへ配置するため `--force` を指定しています。
 
 Pages設定は `wrangler.pages.jsonc`、Worker設定は `wrangler.jsonc`。同じCloudflareアカウントに配置します。Pagesには `ROOMS` → `pair-chat-timer-api` の `Room` クラスのバインディングが必要で、設定ファイルで宣言済みです。Worker単体の公開URLは無効にしています。以後は `npm run deploy:worker` と `npm run deploy:pages` で更新します。
 
